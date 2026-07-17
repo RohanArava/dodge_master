@@ -1,0 +1,9 @@
+[package]
+name = "dodge_master_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { workspace = true, features = ["2d", "ui", "ui_picking"] }
+leafwing-input-manager = { workspace = true }
+avian2d = { workspace = true }

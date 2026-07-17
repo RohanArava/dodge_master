@@ -1,0 +1,14 @@
+[package]
+name = "dodge_master_android"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dodge_master_core = { path = "../dodge_master_core" }
+bevy = { workspace = true, features = ["2d", "android-game-activity"] }
+leafwing-input-manager = { workspace = true }
+
+[lib]
+name = "dodge_master_android"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib"]

@@ -1,0 +1,12 @@
+[package]
+name = "dodge_master_pc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dodge_master_core = { path = "../dodge_master_core" }
+bevy = { workspace = true, features = ["2d", "dynamic_linking"] }
+
+[[bin]]
+name = "dodge_master_pc"
+path = "src/main.rs"
