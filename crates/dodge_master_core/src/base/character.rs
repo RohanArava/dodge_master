@@ -9,12 +9,9 @@ pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<CharacterStats>()
-        .add_systems(Startup, lenny_init)
-        .add_systems(Update, character_inputs)
-            .add_systems(
-                FixedUpdate,
-                character_movement,
-            );
+            .add_systems(Startup, lenny_init)
+            .add_systems(Update, character_inputs)
+            .add_systems(FixedUpdate, character_movement);
     }
 }
 
@@ -36,6 +33,9 @@ pub struct CharacterStats {
     pub input_buffer: i8,
 }
 
+#[derive(Component)]
+pub struct Hurtbox;
+
 impl Default for CharacterStats {
     fn default() -> Self {
         Self {
@@ -48,7 +48,7 @@ impl Default for CharacterStats {
             dash_duration: 0.15,
             dash_cooldown: 0.5,
             dash_enabled: true,
-            input_buffer: 8
+            input_buffer: 8,
         }
     }
 }
@@ -61,6 +61,7 @@ pub struct CharacterState {
     pub grounded: bool,
     pub dash_timer: Timer,
     pub dash_cooldown_timer: Timer,
+    pub lives: i8,
 }
 
 impl Default for CharacterState {
@@ -72,6 +73,7 @@ impl Default for CharacterState {
             grounded: false,
             dash_timer: Timer::from_seconds(0.0, TimerMode::Once),
             dash_cooldown_timer: Timer::from_seconds(0.0, TimerMode::Once),
+            lives: 5,
         }
     }
 }
@@ -88,7 +90,7 @@ impl Default for InputState {
         Self {
             jump_pressed: -1,
             dash_pressed: -1,
-            jump_just_released: false
+            jump_just_released: false,
         }
     }
 }
@@ -103,6 +105,8 @@ pub struct CharacterBundle {
     collider: Collider,
     transform: Transform,
     input: InputBundle,
+    hurt_box: Hurtbox,
+    cee: CollisionEventsEnabled,
 }
 
 impl CharacterBundle {
@@ -117,6 +121,8 @@ impl CharacterBundle {
             collider: Collider::circle(radius),
             transform: Transform::from_translation(position.extend(0.0)),
             input: InputBundle::default(),
+            hurt_box: Hurtbox,
+            cee: CollisionEventsEnabled,
         }
     }
 }
@@ -133,12 +139,18 @@ fn lenny_init(mut commands: Commands) {
 }
 
 fn character_inputs(
-    mut query: Query<(&ActionState<Action>, &mut InputState, &CharacterStats), With<Character>>
+    mut query: Query<(&ActionState<Action>, &mut InputState, &CharacterStats), With<Character>>,
 ) {
     for (action_state, mut input_state, stats) in &mut query {
-        if action_state.just_pressed(&Action::Jump) {input_state.jump_pressed = stats.input_buffer;}
-        if action_state.just_pressed(&Action::Dash) {input_state.dash_pressed = stats.input_buffer;}
-        if action_state.just_released(&Action::Jump) {input_state.jump_just_released = true;}
+        if action_state.just_pressed(&Action::Jump) {
+            input_state.jump_pressed = stats.input_buffer;
+        }
+        if action_state.just_pressed(&Action::Dash) {
+            input_state.dash_pressed = stats.input_buffer;
+        }
+        if action_state.just_released(&Action::Jump) {
+            input_state.jump_just_released = true;
+        }
     }
 }
 
@@ -147,22 +159,36 @@ fn character_movement(
     mut commands: Commands,
     move_and_slide: MoveAndSlide,
     mut query: Query<
-        (Entity, &Collider, &Position, &Rotation, &ActionState<Action>, &mut CharacterState, &mut InputState, &CharacterStats),
+        (
+            Entity,
+            &Collider,
+            &Position,
+            &Rotation,
+            &ActionState<Action>,
+            &mut CharacterState,
+            &mut InputState,
+            &CharacterStats,
+        ),
         With<Character>,
     >,
 ) {
-    for (entity, collider, position, rotation, action_state, mut state, mut input_state, stats) in &mut query {
-
+    for (entity, collider, position, rotation, action_state, mut state, mut input_state, stats) in
+        &mut query
+    {
         // tick timers
         state.dash_timer.tick(time.delta());
         state.dash_cooldown_timer.tick(time.delta());
 
-        if input_state.dash_pressed >= 0 {input_state.dash_pressed -= 1;}
-        if input_state.jump_pressed >= 0 {input_state.jump_pressed -= 1;}
+        if input_state.dash_pressed >= 0 {
+            input_state.dash_pressed -= 1;
+        }
+        if input_state.jump_pressed >= 0 {
+            input_state.jump_pressed -= 1;
+        }
 
         // without this downward velocity keeps on increasing due to gravity
         if state.grounded {
-            state.jumps_remaining = if stats.double_jump_enabled {2} else {1};
+            state.jumps_remaining = if stats.double_jump_enabled { 2 } else { 1 };
             if state.velocity.y < 0.0 {
                 state.velocity.y = 0.0;
             }
@@ -174,7 +200,8 @@ fn character_movement(
             state.facing = direction.signum();
         }
 
-        state.velocity.x = f32::copysign((direction.abs() >= 0.3) as i32 as f32, direction) * stats.speed;
+        state.velocity.x =
+            f32::copysign((direction.abs() >= 0.3) as i32 as f32, direction) * stats.speed;
         state.velocity.y -= stats.gravity * time.delta_secs();
 
         // Dash processing
@@ -195,12 +222,16 @@ fn character_movement(
 
         // If jump is pressed give the character upward velocity
         if input_state.jump_pressed >= 0 && state.jumps_remaining > 0 {
-            let is_second_jump = stats.double_jump_enabled && state.jumps_remaining==0;
-            state.velocity.y = if is_second_jump {stats.second_jump_velocity} else {stats.jump_velocity};
+            let is_second_jump = stats.double_jump_enabled && state.jumps_remaining == 0;
+            state.velocity.y = if is_second_jump {
+                stats.second_jump_velocity
+            } else {
+                stats.jump_velocity
+            };
 
             state.jumps_remaining -= 1;
             input_state.jump_pressed = 0;
-        } 
+        }
 
         // If jump is released before max height (most of it), cancel jump (mostly)
         if input_state.jump_just_released && state.velocity.y > 10.0 {

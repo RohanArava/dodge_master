@@ -1,6 +1,8 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
+use crate::base::utils::{WINDOW_HEIGHT, WINDOW_WIDTH};
+
 pub struct ArenaPlugin;
 
 impl Plugin for ArenaPlugin {
@@ -13,21 +15,18 @@ impl Plugin for ArenaPlugin {
 pub struct ArenaWall;
 
 fn arena_init(mut commands: Commands, window_query: Query<&Window>) {
-    let window_width = 1280.0;
-    let window_height = 720.0;
-    
-    let half_width = window_width / 2.0;
-    let half_height = window_height / 2.0;
+    let half_width = WINDOW_WIDTH / 2.0;
+    let half_height = WINDOW_HEIGHT / 2.0;
 
     // Ground
     commands.spawn((
         ArenaWall,
         RigidBody::Static,
-        Collider::rectangle(window_width, 50.0),
+        Collider::rectangle(WINDOW_WIDTH, 50.0),
         Transform::from_xyz(0.0, -half_height, 0.0),
         Sprite {
             color: Color::srgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(window_width, 50.0)),
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, 50.0)),
             ..default()
         },
     ));
@@ -36,11 +35,11 @@ fn arena_init(mut commands: Commands, window_query: Query<&Window>) {
     commands.spawn((
         ArenaWall,
         RigidBody::Static,
-        Collider::rectangle(50.0, window_height),
+        Collider::rectangle(50.0, WINDOW_HEIGHT),
         Transform::from_xyz(-half_width, 0.0, 0.0),
         Sprite {
             color: Color::srgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(50.0, window_height)),
+            custom_size: Some(Vec2::new(50.0, WINDOW_HEIGHT)),
             ..default()
         },
     ));
@@ -49,11 +48,11 @@ fn arena_init(mut commands: Commands, window_query: Query<&Window>) {
     commands.spawn((
         ArenaWall,
         RigidBody::Static,
-        Collider::rectangle(50.0, window_height),
+        Collider::rectangle(50.0, WINDOW_HEIGHT),
         Transform::from_xyz(half_width, 0.0, 0.0),
         Sprite {
             color: Color::srgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(50.0, window_height)),
+            custom_size: Some(Vec2::new(50.0, WINDOW_HEIGHT)),
             ..default()
         },
     ));

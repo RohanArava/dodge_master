@@ -7,3 +7,4 @@ edition = "2024"
 bevy = { workspace = true, features = ["2d", "ui", "ui_picking"] }
 leafwing-input-manager = { workspace = true }
 avian2d = { workspace = true }
+rand = "0.10.2"
