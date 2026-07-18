@@ -1,1 +1,1 @@
-cargo run -p dodge_master_pc
+RUST_BACKTRACE=1 cargo run -p dodge_master_pc

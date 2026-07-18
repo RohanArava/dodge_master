@@ -5,6 +5,7 @@ pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
+        #[cfg(not(target_os = "android"))]
         app
         .add_plugins(InputManagerPlugin::<Action>::default())
         ;

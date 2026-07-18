@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'org.bevyengine.example'
+    namespace 'com.melodev.dodgemaster'
     compileSdk 34
 
     defaultConfig {
-        applicationId "org.bevyengine.example"
+        applicationId "com.melodev.dodgemaster"
         minSdk 31
         targetSdk 33
         versionCode 1

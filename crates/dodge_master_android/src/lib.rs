@@ -1,9 +1,7 @@
 use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
-// #[cfg(target_os = "android")]
 use dodge_master_core::base::character::Character;
-// #[cfg(target_os = "android")]
 use dodge_master_core::base::input::Action;
+use leafwing_input_manager::prelude::*;
 
 #[derive(Component, Default)]
 pub struct JoystickKnob {
@@ -15,18 +13,12 @@ pub struct JoystickKnob {
 fn main() {
     let mut app = dodge_master_core::get_app();
 
-    #[cfg(target_os = "android")]
-    {
-        use leafwing_input_manager::plugin::InputManagerSystem;
-
-        app.add_systems(Startup, (setup_android_joystick, setup_action_buttons))
-            .add_systems(Update, translate_joystick_to_leafwing.after(InputManagerSystem::Update));
-    }
+    app.add_systems(Startup, (setup_android_joystick, setup_action_buttons))
+        .add_systems(PreUpdate, translate_joystick_to_leafwing);
 
     app.run();
 }
 
-#[cfg(target_os = "android")]
 fn setup_android_joystick(mut commands: Commands) {
     let max_radius = 90.0;
 
@@ -40,8 +32,6 @@ fn setup_android_joystick(mut commands: Commands) {
                 left: Val::Px(50.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                // A border needs a thickness AND a color to be visible.
-                // border_radius alone with BorderColor draws nothing.
                 border: UiRect::all(Val::Px(3.0)),
                 border_radius: BorderRadius::all(Val::Percent(50.0)),
                 ..default()
@@ -73,7 +63,6 @@ fn setup_android_joystick(mut commands: Commands) {
                             // to snap back toward zero every frame instead of tracking
                             // the finger's actual position.
                             let drag_offset = event.distance;
-                            info!("drag_offset: {:?}", drag_offset);
 
                             if drag_offset.length() > knob.max_radius {
                                 let constrained = drag_offset.normalize() * knob.max_radius;
@@ -87,14 +76,12 @@ fn setup_android_joystick(mut commands: Commands) {
                             }
 
                             knob.value.y *= -1.0;
-                            info!("knob_value: {:?}", knob.value);
                         }
                     },
                 )
                 .observe(
                     |trigger: On<Pointer<DragEnd>>,
                      mut query: Query<(&mut Node, &mut JoystickKnob)>| {
-                        info!("DragEnd");
                         if let Ok((mut node, mut knob)) = query.get_mut(trigger.event_target()) {
                             node.left = Val::Px(0.0);
                             node.top = Val::Px(0.0);
@@ -105,20 +92,12 @@ fn setup_android_joystick(mut commands: Commands) {
         });
 }
 
-#[cfg(target_os = "android")]
 fn translate_joystick_to_leafwing(
     joystick_query: Query<&JoystickKnob>,
     mut player_query: Query<&mut ActionState<Action>, With<Character>>,
 ) {
-    // info!("translate");
     if let Ok(knob) = joystick_query.single() {
-        // info!("knob");
         if let Ok(mut action_state) = player_query.single_mut() {
-            if knob.value != Vec2::ZERO {
-                info!("knob_value lw: {:?}. action value: {:?}", knob.value, action_state.axis_pair(&Action::Move));
-            } else {
-                info!("knob zero")
-            }
             action_state.set_axis_pair(&Action::Move, knob.value);
         }
     }
@@ -127,13 +106,11 @@ fn translate_joystick_to_leafwing(
 #[derive(Component)]
 pub struct ActionButton(pub Action);
 
-#[cfg(target_os = "android")]
 fn setup_action_buttons(mut commands: Commands) {
     spawn_action_button(&mut commands, Action::Jump, 50.0, 150.0, "JUMP");
     spawn_action_button(&mut commands, Action::Dash, 50.0, 60.0, "DASH");
 }
 
-#[cfg(target_os = "android")]
 fn spawn_action_button(
     commands: &mut Commands,
     action: Action,
