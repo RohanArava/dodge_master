@@ -10,7 +10,7 @@ impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<CharacterStats>()
             .add_systems(Startup, lenny_init)
-            .add_systems(Update, character_inputs)
+            .add_systems(Update, (character_inputs, animate_sprite))
             .add_systems(FixedUpdate, character_movement);
     }
 }
@@ -95,6 +95,15 @@ impl Default for InputState {
     }
 }
 
+#[derive(Component)]
+struct AnimationIndices {
+    first: usize,
+    last: usize,
+}
+
+#[derive(Component, Deref, DerefMut)]
+struct AnimationTimer(Timer);
+
 #[derive(Bundle)]
 pub struct CharacterBundle {
     marker: Character,
@@ -107,35 +116,90 @@ pub struct CharacterBundle {
     input: InputBundle,
     hurt_box: Hurtbox,
     cee: CollisionEventsEnabled,
+    sprite: Sprite,
+    animation_indices: AnimationIndices,
+    animation_timer: AnimationTimer,
 }
 
-impl CharacterBundle {
-    pub fn new(position: Vec2) -> Self {
-        let radius = 15.0;
+impl Default for CharacterBundle {
+    fn default() -> Self {
+        let position = vec2(0.0, 200.0);
+        let height = 84.0;
+        let width = 60.0;
         Self {
             marker: Character,
             stats: CharacterStats::default(),
             state: CharacterState::default(),
             input_state: InputState::default(),
             rigid_body: RigidBody::Kinematic,
-            collider: Collider::circle(radius),
+            collider: Collider::rectangle(width, height),
             transform: Transform::from_translation(position.extend(0.0)),
             input: InputBundle::default(),
             hurt_box: Hurtbox,
             cee: CollisionEventsEnabled,
+            sprite: Sprite {
+                color: Color::srgb(0.9, 0.3, 0.3),
+                custom_size: Some(Vec2::splat(30.0)),
+                ..default()
+            },
+            animation_indices: AnimationIndices { first: 0, last: 0 },
+            animation_timer: AnimationTimer(Timer::from_seconds(0.0, TimerMode::Repeating)),
         }
     }
 }
 
-fn lenny_init(mut commands: Commands) {
-    commands.spawn((
-        CharacterBundle::new(Vec2::new(0.0, 200.0)),
-        Sprite {
-            color: Color::srgb(0.9, 0.3, 0.3),
-            custom_size: Some(Vec2::splat(30.0)),
-            ..default()
+fn lenny_init(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let texture = asset_server.load("behe_spritesheet.png");
+    let layout = TextureAtlasLayout::from_grid(UVec2::splat(640), 4, 2, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    // Use only the subset of sprites in the sheet that make up the run animation
+    let animation_indices = AnimationIndices { first: 5, last: 5 };
+
+    let art_min = Vec2::new(60.0, 40.0); // left, top
+    let art_max = Vec2::new(520.0, 600.0); // right, bottom (feet)
+    let art_rect = Rect::from_corners(art_min, art_max);
+
+    let scale = 0.2;
+    let render_size = art_rect.size() * scale;
+
+    commands.spawn((CharacterBundle {
+        sprite: Sprite {
+            image: texture,
+            texture_atlas: Some(TextureAtlas {
+                layout: texture_atlas_layout,
+                index: 5,
+            }),
+            custom_size: Some(render_size),
+            rect: Some(art_rect),
+            ..Default::default()
         },
-    ));
+        animation_indices: animation_indices,
+        animation_timer: AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
+        ..Default::default()
+    },));
+}
+
+fn animate_sprite(
+    time: Res<Time>,
+    mut query: Query<(&AnimationIndices, &mut AnimationTimer, &mut Sprite)>,
+) {
+    for (indices, mut timer, mut sprite) in &mut query {
+        timer.tick(time.delta());
+
+        if timer.just_finished()
+            && let Some(atlas) = &mut sprite.texture_atlas
+        {
+            atlas.index = if atlas.index == indices.last {
+                indices.first
+            } else {
+                atlas.index + 1
+            };
+        }
+    }
 }
 
 fn character_inputs(
@@ -168,12 +232,24 @@ fn character_movement(
             &mut CharacterState,
             &mut InputState,
             &CharacterStats,
+            &mut Sprite,
+            &mut AnimationIndices,
         ),
         With<Character>,
     >,
 ) {
-    for (entity, collider, position, rotation, action_state, mut state, mut input_state, stats) in
-        &mut query
+    for (
+        entity,
+        collider,
+        position,
+        rotation,
+        action_state,
+        mut state,
+        mut input_state,
+        stats,
+        mut sprite,
+        mut animation_indices,
+    ) in &mut query
     {
         // tick timers
         state.dash_timer.tick(time.delta());
@@ -200,8 +276,9 @@ fn character_movement(
             state.facing = direction.signum();
         }
 
-        state.velocity.x =
-            f32::copysign((direction.abs() >= 0.3) as i32 as f32, direction) * stats.speed;
+        let velocity_direction = f32::copysign((direction.abs() >= 0.10) as i32 as f32, direction);
+
+        state.velocity.x = velocity_direction * stats.speed;
         state.velocity.y -= stats.gravity * time.delta_secs();
 
         // Dash processing
@@ -261,5 +338,25 @@ fn character_movement(
         commands.entity(entity).insert(Position(output.position));
         state.velocity = output.projected_velocity;
         state.grounded = touched_floor;
+
+        sprite.flip_x = state.facing == 1.0;
+
+        if velocity_direction != 0.0 {
+            animation_indices.first = 0;
+            animation_indices.last = 4;
+
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                if atlas.index > 4 {
+                    atlas.index = 0
+                }
+            }
+        } else {
+            animation_indices.first = 5;
+            animation_indices.last = 5;
+
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                atlas.index = 5
+            }
+        }
     }
 }

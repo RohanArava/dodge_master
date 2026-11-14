@@ -18,13 +18,18 @@ pub fn get_app() -> App {
             ..default()
         }),
         ..default()
-    }))
+    }
+    ).set(AssetPlugin {
+         #[cfg(not(target_os = "android"))]
+            file_path: "../../assets".to_string(),
+            ..default()
+        }))
     .add_plugins(input::InputPlugin)
     .add_plugins(PhysicsPlugins::default().with_length_unit(20.0))
-    .add_plugins(PhysicsDebugPlugin::default())
+    // .add_plugins(PhysicsDebugPlugin::default())
     .add_plugins(CharacterPlugin)
     .add_plugins(ArenaPlugin)
-    .add_plugins(AttackOrchestratorPlugin)
+    // .add_plugins(AttackOrchestratorPlugin)
     .add_plugins(GamePlugin)
     .add_systems(Startup, setup_camera);
 
