@@ -48,9 +48,9 @@ android {
     }
     sourceSets {
         main {
-            assets.srcDirs += files('../../../../assets')
+            assets.srcDirs += files('../assets')
 
-            res.srcDirs += files('../../../../assets/android-res')
+            res.srcDirs += files('../assets/android-res')
         }
     }
 }

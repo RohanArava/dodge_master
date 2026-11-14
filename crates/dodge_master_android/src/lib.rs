@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 use dodge_master_core::base::character::Character;
 use dodge_master_core::base::input::Action;
 use leafwing_input_manager::prelude::*;
@@ -9,87 +10,151 @@ pub struct JoystickKnob {
     pub max_radius: f32,
 }
 
+#[derive(Component)]
+pub struct JoystickZone {
+    pub max_radius: f32,
+    pub active: bool,
+}
+
 #[bevy_main]
 fn main() {
     let mut app = dodge_master_core::get_app();
 
     app.add_systems(Startup, (setup_android_joystick, setup_action_buttons))
-        .add_systems(PreUpdate, translate_joystick_to_leafwing);
+        .add_systems(
+            PreUpdate,
+            (update_joystick_from_cursor, translate_joystick_to_leafwing).chain(),
+        );
 
     app.run();
 }
 
 fn setup_android_joystick(mut commands: Commands) {
     let max_radius = 90.0;
+    let zone_size = max_radius * 2.0;
+
+    // Keep the zone centered on the same point the original 70x70 ring was.
+    let ring_center_left = 80.0 + 35.0;
+    let ring_center_bottom = 60.0 + 35.0;
+    let zone_left = ring_center_left - max_radius;
+    let zone_bottom = ring_center_bottom - max_radius;
 
     commands
         .spawn((
             Node {
-                width: Val::Px(70.0),
-                height: Val::Px(70.0),
+                width: Val::Px(zone_size),
+                height: Val::Px(zone_size),
                 position_type: PositionType::Absolute,
-                bottom: Val::Px(50.0),
-                left: Val::Px(50.0),
+                bottom: Val::Px(zone_bottom),
+                left: Val::Px(zone_left),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                border: UiRect::all(Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Percent(50.0)),
                 ..default()
             },
-            BorderColor::all(Color::WHITE),
+            JoystickZone {
+                max_radius,
+                active: false,
+            },
+            RelativeCursorPosition::default(),
         ))
         .with_children(|parent| {
             parent
                 .spawn((
                     Node {
-                        width: Val::Px(60.0),
-                        height: Val::Px(60.0),
+                        width: Val::Px(70.0),
+                        height: Val::Px(70.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(Val::Px(3.0)),
                         border_radius: BorderRadius::all(Val::Percent(50.0)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.8, 0.8, 0.8)),
-                    JoystickKnob {
-                        value: Vec2::ZERO,
-                        max_radius,
-                    },
+                    BorderColor::all(Color::WHITE),
                 ))
-                .observe(
-                    |trigger: On<Pointer<Drag>>,
-                     mut query: Query<(&mut Node, &mut JoystickKnob)>| {
-                        let event = trigger.event();
-                        if let Ok((mut node, mut knob)) = query.get_mut(trigger.event_target()) {
-                            // `distance` is the total offset from where the drag started,
-                            // not the per-frame delta. Using `delta` here caused the knob
-                            // to snap back toward zero every frame instead of tracking
-                            // the finger's actual position.
-                            let drag_offset = event.distance;
+                .with_children(|parent| {
+                    parent.spawn((
+                        Node {
+                            width: Val::Px(60.0),
+                            height: Val::Px(60.0),
+                            border_radius: BorderRadius::all(Val::Percent(50.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.8, 0.8, 0.8)),
+                        JoystickKnob {
+                            value: Vec2::ZERO,
+                            max_radius,
+                        },
+                    ));
+                });
+        })
+        .observe(|_trigger: On<Pointer<Press>>, mut zones: Query<&mut JoystickZone>| {
+            if let Ok(mut zone) = zones.single_mut() {
+                zone.active = true;
+            }
+        })
+        .observe(
+            |_trigger: On<Pointer<Release>>,
+             mut zones: Query<&mut JoystickZone>,
+             mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
+                if let Ok(mut zone) = zones.single_mut() {
+                    zone.active = false;
+                }
+                if let Ok((mut node, mut knob)) = knobs.single_mut() {
+                    node.left = Val::Px(0.0);
+                    node.top = Val::Px(0.0);
+                    knob.value = Vec2::ZERO;
+                }
+            },
+        )
+        .observe(
+            |_trigger: On<Pointer<DragEnd>>,
+             mut zones: Query<&mut JoystickZone>,
+             mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
+                if let Ok(mut zone) = zones.single_mut() {
+                    zone.active = false;
+                }
+                if let Ok((mut node, mut knob)) = knobs.single_mut() {
+                    node.left = Val::Px(0.0);
+                    node.top = Val::Px(0.0);
+                    knob.value = Vec2::ZERO;
+                }
+            },
+        );
+}
 
-                            if drag_offset.length() > knob.max_radius {
-                                let constrained = drag_offset.normalize() * knob.max_radius;
-                                node.left = Val::Px(constrained.x);
-                                node.top = Val::Px(constrained.y);
-                                knob.value = constrained / knob.max_radius;
-                            } else {
-                                node.left = Val::Px(drag_offset.x);
-                                node.top = Val::Px(drag_offset.y);
-                                knob.value = drag_offset / knob.max_radius;
-                            }
+fn update_joystick_from_cursor(
+    zone_query: Query<(&JoystickZone, &RelativeCursorPosition)>,
+    mut knobs: Query<(&mut Node, &mut JoystickKnob)>,
+) {
+    let Ok((zone, rel_cursor)) = zone_query.single() else {
+        return;
+    };
+    let Ok((mut node, mut knob)) = knobs.single_mut() else {
+        return;
+    };
 
-                            knob.value.y *= -1.0;
-                        }
-                    },
-                )
-                .observe(
-                    |trigger: On<Pointer<DragEnd>>,
-                     mut query: Query<(&mut Node, &mut JoystickKnob)>| {
-                        if let Ok((mut node, mut knob)) = query.get_mut(trigger.event_target()) {
-                            node.left = Val::Px(0.0);
-                            node.top = Val::Px(0.0);
-                            knob.value = Vec2::ZERO;
-                        }
-                    },
-                );
-        });
+    if !zone.active {
+        return;
+    }
+
+    let Some(normalized) = rel_cursor.normalized else {
+        return;
+    };
+
+    // normalized: (0,0) at the zone's center, (±0.5, ±0.5) at its corners.
+    let size = Vec2::splat(zone.max_radius * 2.0);
+    let mut offset = normalized * size;
+
+    if offset.length() > zone.max_radius {
+        offset = offset.normalize() * zone.max_radius;
+    }
+
+    node.left = Val::Px(offset.x);
+    node.top = Val::Px(offset.y);
+
+    let mut value = offset / zone.max_radius;
+    value.y *= -1.0;
+    knob.value = value;
 }
 
 fn translate_joystick_to_leafwing(
