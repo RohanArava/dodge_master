@@ -40,13 +40,13 @@ impl Default for CharacterStats {
     fn default() -> Self {
         Self {
             speed: 500.0,
-            jump_velocity: 1000.0,
-            second_jump_velocity: 300.0,
+            jump_velocity: 1200.0,
+            second_jump_velocity: 1000.0,
             double_jump_enabled: true,
             gravity: 2800.0,
-            dash_speed: 1800.0,
-            dash_duration: 0.15,
-            dash_cooldown: 0.5,
+            dash_speed: 1200.0,
+            dash_duration: 0.2,
+            dash_cooldown: 0.8,
             dash_enabled: true,
             input_buffer: 8,
         }
@@ -299,7 +299,7 @@ fn character_movement(
 
         // If jump is pressed give the character upward velocity
         if input_state.jump_pressed >= 0 && state.jumps_remaining > 0 {
-            let is_second_jump = stats.double_jump_enabled && state.jumps_remaining == 0;
+            let is_second_jump = stats.double_jump_enabled && state.jumps_remaining == 1;
             state.velocity.y = if is_second_jump {
                 stats.second_jump_velocity
             } else {
