@@ -2,7 +2,7 @@ use avian2d::prelude::*;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 
-use crate::input::{Action, InputBundle};
+use crate::input::{Action, InputBundle, TouchMove};
 
 pub struct CharacterPlugin;
 
@@ -222,6 +222,7 @@ fn character_movement(
     time: Res<Time>,
     mut commands: Commands,
     move_and_slide: MoveAndSlide,
+    touch: Res<TouchMove>,
     mut query: Query<
         (
             Entity,
@@ -271,7 +272,7 @@ fn character_movement(
         }
 
         // Base direction and velocity
-        let direction = action_state.axis_pair(&Action::Move).x;
+        let direction = (action_state.axis_pair(&Action::Move) + touch.0).x;
         if direction != 0.0 {
             state.facing = direction.signum();
         }

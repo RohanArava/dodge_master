@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use dodge_master_core::base::character::Character;
-use dodge_master_core::base::input::Action;
+use dodge_master_core::base::input::{Action, TouchMove};
 use leafwing_input_manager::prelude::*;
 
 #[derive(Component, Default)]
@@ -23,7 +23,7 @@ fn main() {
     app.add_systems(Startup, (setup_android_joystick, setup_action_buttons))
         .add_systems(
             PreUpdate,
-            (update_joystick_from_cursor, translate_joystick_to_leafwing).chain(),
+            (update_joystick_from_cursor, write_touch_move).chain(),
         );
 
     app.run();
@@ -157,14 +157,13 @@ fn update_joystick_from_cursor(
     knob.value = value;
 }
 
-fn translate_joystick_to_leafwing(
-    joystick_query: Query<&JoystickKnob>,
-    mut player_query: Query<&mut ActionState<Action>, With<Character>>,
+fn write_touch_move(
+    knob: Query<&JoystickKnob>,
+    mut touch: ResMut<TouchMove>,
 ) {
-    if let Ok(knob) = joystick_query.single() {
-        if let Ok(mut action_state) = player_query.single_mut() {
-            action_state.set_axis_pair(&Action::Move, knob.value);
-        }
+    let value = knob.single().map(|k| k.value).unwrap_or(Vec2::ZERO);
+    if touch.0 != value {
+        touch.0 = value;
     }
 }
 
@@ -222,8 +221,42 @@ fn spawn_action_button(
                 }
             },
         )
+         .observe(
+            |trigger: On<Pointer<Enter>>,
+             buttons: Query<&ActionButton>,
+             mut player_query: Query<&mut ActionState<Action>, With<Character>>| {
+                if let Ok(button) = buttons.get(trigger.event_target()) {
+                    if let Ok(mut action_state) = player_query.single_mut() {
+                        info!("button press");
+                        action_state.press(&button.0);
+                    }
+                }
+            },
+        )
         .observe(
             |trigger: On<Pointer<Release>>,
+             buttons: Query<&ActionButton>,
+             mut player_query: Query<&mut ActionState<Action>, With<Character>>| {
+                if let Ok(button) = buttons.get(trigger.event_target()) {
+                    if let Ok(mut action_state) = player_query.single_mut() {
+                        action_state.release(&button.0);
+                    }
+                }
+            },
+        )
+        .observe(
+            |trigger: On<Pointer<Leave>>,
+             buttons: Query<&ActionButton>,
+             mut player_query: Query<&mut ActionState<Action>, With<Character>>| {
+                if let Ok(button) = buttons.get(trigger.event_target()) {
+                    if let Ok(mut action_state) = player_query.single_mut() {
+                        action_state.release(&button.0);
+                    }
+                }
+            },
+        )
+        .observe(
+            |trigger: On<Pointer<Cancel>>,
              buttons: Query<&ActionButton>,
              mut player_query: Query<&mut ActionState<Action>, With<Character>>| {
                 if let Ok(button) = buttons.get(trigger.event_target()) {

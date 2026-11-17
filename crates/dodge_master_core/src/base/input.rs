@@ -5,12 +5,15 @@ pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(not(target_os = "android"))]
         app
         .add_plugins(InputManagerPlugin::<Action>::default())
+        .init_resource::<TouchMove>();
         ;
     }
 }
+
+#[derive(Resource, Default, Debug)]
+pub struct TouchMove(pub Vec2);
 
 #[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect)]
 pub enum Action {
