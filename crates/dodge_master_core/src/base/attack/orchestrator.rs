@@ -48,7 +48,7 @@ fn attack_orchestration(
     attack_state.attacks_timer.tick(time.delta());
 
     if attack_state.attacks_timer.just_finished() {
-        commands.spawn(LaserSystem::from_epoch_and_count(4, 4));
+        commands.spawn(LaserSystem::from_epoch_and_count(i8::MAX, 3));
     }
 }
 
@@ -104,10 +104,19 @@ fn laser_system_system(
                         let (start, end) = if i == 0 {
                             let start = random_top_point();
                             let predicted = position.0
-                                + character_velocity * LaserBundle::get_anticipation_time();
+                                + character_velocity * (LaserBundle::get_anticipation_time()/2.0);
                             let end = boundary_intersection(start, predicted);
                             (start, end)
-                        } else {
+                        } else if i == 1 {
+                            let start = random_top_point();
+                            let end = boundary_intersection(start, position.0);
+                            (start, end)
+                        } else if i==2 {
+                            let start = random_right_point();
+                            let end = boundary_intersection(start, position.0);
+                            (start, end)
+                        }
+                        else {
                             (random_top_point(), random_bottom_point())
                         };
 
@@ -184,8 +193,8 @@ impl LaserState {
             midpoint,
             max_width: 20.0,
             anticipation_time: LaserBundle::get_anticipation_time(),
-            firing_time: 1.2,
-            ending_time: 0.6,
+            firing_time: 0.6,
+            ending_time: 0.3,
         }
     }
 }
@@ -225,7 +234,7 @@ impl LaserBundle {
     }
 
     fn get_anticipation_time() -> f32 {
-        0.4
+        0.5
     }
 }
 
@@ -320,9 +329,15 @@ fn random_top_point() -> Vec2 {
     Vec2::new(x, WINDOW_HEIGHT / 2.0)
 }
 
+fn random_right_point() -> Vec2 {
+    let mut rng = rand::rng();
+    let y = rng.random_range(-WINDOW_HEIGHT / 2.5..WINDOW_HEIGHT / 2.5);
+    Vec2::new(WINDOW_WIDTH / 2.0, y)
+}
+
 fn random_bottom_point() -> Vec2 {
     let mut rng = rand::rng();
-    let x = rng.random_range(-WINDOW_WIDTH / 2.0..WINDOW_WIDTH / 2.0);
+    let x = rng.random_range(-WINDOW_WIDTH / 2.5..WINDOW_WIDTH / 2.5);
     Vec2::new(x, -WINDOW_HEIGHT / 2.0)
 }
 
