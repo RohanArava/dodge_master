@@ -1,5 +1,5 @@
+use bevy::picking::pointer::PointerId;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 use dodge_master_core::base::character::Character;
 use dodge_master_core::base::input::{Action, TouchMove};
 use leafwing_input_manager::prelude::*;
@@ -13,7 +13,7 @@ pub struct JoystickKnob {
 #[derive(Component)]
 pub struct JoystickZone {
     pub max_radius: f32,
-    pub active: bool,
+    pub pointer: Option<PointerId>,
 }
 
 #[bevy_main]
@@ -21,10 +21,7 @@ fn main() {
     let mut app = dodge_master_core::get_app();
 
     app.add_systems(Startup, (setup_android_joystick, setup_action_buttons))
-        .add_systems(
-            PreUpdate,
-            (update_joystick_from_cursor, write_touch_move).chain(),
-        );
+        .add_systems(PreUpdate, write_touch_move);
 
     app.run();
 }
@@ -33,7 +30,6 @@ fn setup_android_joystick(mut commands: Commands) {
     let max_radius = 90.0;
     let zone_size = max_radius * 2.0;
 
-    // Keep the zone centered on the same point the original 70x70 ring was.
     let ring_center_left = 80.0 + 35.0;
     let ring_center_bottom = 60.0 + 35.0;
     let zone_left = ring_center_left - max_radius;
@@ -53,9 +49,8 @@ fn setup_android_joystick(mut commands: Commands) {
             },
             JoystickZone {
                 max_radius,
-                active: false,
+                pointer: None,
             },
-            RelativeCursorPosition::default(),
         ))
         .with_children(|parent| {
             parent
@@ -87,80 +82,116 @@ fn setup_android_joystick(mut commands: Commands) {
                     ));
                 });
         })
-        .observe(|_trigger: On<Pointer<Press>>, mut zones: Query<&mut JoystickZone>| {
-            if let Ok(mut zone) = zones.single_mut() {
-                zone.active = true;
-            }
-        })
         .observe(
-            |_trigger: On<Pointer<Release>>,
-             mut zones: Query<&mut JoystickZone>,
+            |t: On<Pointer<Press>>,
+             mut zones: Query<(&mut JoystickZone, &UiGlobalTransform, &ComputedNode)>,
              mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
-                if let Ok(mut zone) = zones.single_mut() {
-                    zone.active = false;
+                let (Ok((mut zone, transform, computed)), Ok((mut node, mut knob))) =
+                    (zones.single_mut(), knobs.single_mut())
+                else {
+                    return;
+                };
+
+                if zone.pointer.is_none() {
+                    zone.pointer = Some(t.pointer_id);
                 }
-                if let Ok((mut node, mut knob)) = knobs.single_mut() {
-                    node.left = Val::Px(0.0);
-                    node.top = Val::Px(0.0);
-                    knob.value = Vec2::ZERO;
+
+                let pointer_position = t.pointer_location.position;
+
+                let zone_position = transform.translation * computed.inverse_scale_factor;
+
+                let mut offset = pointer_position - zone_position;
+
+                if offset.length() > zone.max_radius {
+                    offset = offset.normalize() * zone.max_radius;
                 }
+
+                node.left = Val::Px(offset.x);
+                node.top = Val::Px(offset.y);
+
+                let mut value = offset / zone.max_radius;
+                value.y *= -1.0;
+                knob.value = value;
             },
         )
         .observe(
-            |_trigger: On<Pointer<DragEnd>>,
+            |t: On<Pointer<Drag>>,
+             mut zones: Query<(&mut JoystickZone, &UiGlobalTransform, &ComputedNode)>,
+             mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
+                let (Ok((zone, transform, computed)), Ok((mut node, mut knob))) =
+                    (zones.single_mut(), knobs.single_mut())
+                else {
+                    return;
+                };
+                if zone.pointer != Some(t.pointer_id) {
+                    return;
+                }
+
+                let pointer_position = t.pointer_location.position;
+
+                let zone_position = transform.translation * computed.inverse_scale_factor;
+
+                let mut offset = pointer_position - zone_position;
+
+                if offset.length() > zone.max_radius {
+                    offset = offset.normalize() * zone.max_radius;
+                }
+
+                node.left = Val::Px(offset.x);
+                node.top = Val::Px(offset.y);
+
+                let mut value = offset / zone.max_radius;
+                value.y *= -1.0;
+                knob.value = value;
+            },
+        )
+        .observe(
+            |t: On<Pointer<DragEnd>>,
              mut zones: Query<&mut JoystickZone>,
              mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
-                if let Ok(mut zone) = zones.single_mut() {
-                    zone.active = false;
-                }
-                if let Ok((mut node, mut knob)) = knobs.single_mut() {
-                    node.left = Val::Px(0.0);
-                    node.top = Val::Px(0.0);
-                    knob.value = Vec2::ZERO;
-                }
+                release(&t.pointer_id, &mut zones, &mut knobs);
+            },
+        )
+        .observe(
+            |t: On<Pointer<Release>>,
+             mut zones: Query<&mut JoystickZone>,
+             mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
+                release(&t.pointer_id, &mut zones, &mut knobs);
+            },
+        )
+        .observe(
+            |t: On<Pointer<Cancel>>,
+             mut zones: Query<&mut JoystickZone>,
+             mut knobs: Query<(&mut Node, &mut JoystickKnob)>| {
+                release(&t.pointer_id, &mut zones, &mut knobs);
             },
         );
 }
 
-fn update_joystick_from_cursor(
-    zone_query: Query<(&JoystickZone, &RelativeCursorPosition)>,
-    mut knobs: Query<(&mut Node, &mut JoystickKnob)>,
+fn release(
+    id: &PointerId,
+    zones: &mut Query<&mut JoystickZone>,
+    knobs: &mut Query<(&mut Node, &mut JoystickKnob)>,
 ) {
-    let Ok((zone, rel_cursor)) = zone_query.single() else {
+    let Ok(mut zone) = zones.single_mut() else {
         return;
     };
-    let Ok((mut node, mut knob)) = knobs.single_mut() else {
-        return;
-    };
-
-    if !zone.active {
+    if zone.pointer != Some(*id) {
         return;
     }
-
-    let Some(normalized) = rel_cursor.normalized else {
-        return;
-    };
-
-    // normalized: (0,0) at the zone's center, (±0.5, ±0.5) at its corners.
-    let size = Vec2::splat(zone.max_radius * 2.0);
-    let mut offset = normalized * size;
-
-    if offset.length() > zone.max_radius {
-        offset = offset.normalize() * zone.max_radius;
+    zone.pointer = None;
+    if let Ok((mut node, mut knob)) = knobs.single_mut() {
+        reset_stick(&mut node, &mut knob);
     }
-
-    node.left = Val::Px(offset.x);
-    node.top = Val::Px(offset.y);
-
-    let mut value = offset / zone.max_radius;
-    value.y *= -1.0;
-    knob.value = value;
 }
 
-fn write_touch_move(
-    knob: Query<&JoystickKnob>,
-    mut touch: ResMut<TouchMove>,
-) {
+fn reset_stick(knob: &mut Node, k: &mut JoystickKnob) {
+    knob.left = Val::Px(0.0);
+    knob.top = Val::Px(0.0);
+    k.value = Vec2::ZERO;
+}
+
+fn write_touch_move(knob: Query<&JoystickKnob>, mut touch: ResMut<TouchMove>) {
     let value = knob.single().map(|k| k.value).unwrap_or(Vec2::ZERO);
     if touch.0 != value {
         touch.0 = value;
@@ -221,7 +252,7 @@ fn spawn_action_button(
                 }
             },
         )
-         .observe(
+        .observe(
             |trigger: On<Pointer<Enter>>,
              buttons: Query<&ActionButton>,
              mut player_query: Query<&mut ActionState<Action>, With<Character>>| {
